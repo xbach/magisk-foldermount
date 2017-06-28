@@ -34,7 +34,7 @@ fi
 
 # Search for external SD card in /mnt/runtime/default...
 for var in `ls /mnt/runtime/default`; do
-    if echo "$var" | grep -Eq '[0-9A-F]{4}-[0-9A-F]{4}'; then
+    if echo "$var" | grep -Eq '[0-9a-fA-F]{4}-[0-9a-fA-F]{4}'; then
         EXTSDPATH=/mnt/media_rw/$var
         break
     fi
@@ -45,31 +45,6 @@ if [ ! $EXTSDPATH ]; then
     echo "E: Could not find external SD card for use, please check if the SD card was installed correctly and restart the device."
     exit 2
 fi
-
-## HELPER FUNCTIONS
-function error() {
-    echo "E: $1"
-    log("ERROR", $1)
-}
-
-function warn() {
-    echo "Note: $1"
-    log("WARNING", $1)
-}
-
-function info() {
-    echo $1
-    log("INFO", $1)
-}
-
-function log() {
-    echo "$(date -u) $1 $2" >> $LOG
-}
-
-function showUsage() {
-
-}
-## END HELPER FUNCTIONS
 
 ## METHOD FUNCTIONS
 function bindFunc() {
@@ -93,14 +68,20 @@ EOM
         if ! mountpoint -q "/mnt/runtime/default/emulated/0/$src"
         then
             echo "Mounting $dest -> /data/media/0/$src..." >> $LOG
-            if ! mount -o bind "$dest" "/data/media/0/$src" 1>>$LOG 2>>$LOG
-            then
-                echo "Failed. Mounting $dest -> /mnt/runtime/default/emulated/0/$src..." >> $LOG
-                mount -o bind "$dest" "/mnt/runtime/default/emulated/0/$src" 1>>$LOG 2>>$LOG
-                mount -o bind "$dest" "/mnt/runtime/read/emulated/0/$src" 1>>$LOG 2>>$LOG
-                mount -o bind "$dest" "/mnt/runtime/write/emulated/0/$src" 1>>$LOG 2>>$LOG
-            fi
+            mount -o bind "$dest" "/data/media/0/$src" 1>>$LOG 2>>$LOG # old style mounting
+            # if ! mount -o bind "$dest" "/data/media/0/$src" 1>>$LOG 2>>$LOG
+            # then
+            #     echo "Failed. Mounting $dest -> /mnt/runtime/default/emulated/0/$src..." >> $LOG
+            #     mount -o bind "$dest" "/mnt/runtime/default/emulated/0/$src" 1>>$LOG 2>>$LOG
+            #     mount -o bind "$dest" "/mnt/runtime/read/emulated/0/$src" 1>>$LOG 2>>$LOG
+            #     mount -o bind "$dest" "/mnt/runtime/write/emulated/0/$src" 1>>$LOG 2>>$LOG
+            # fi
             echo "Done!" >> $LOG
+            if [[ ! -f $BINDLIST ]];
+            then
+            	touch $BINDLIST
+            fi
+            echo "$dest	$src" >> $BINDLIST
         else
             echo "E: Folder already mounted."
             exit 5
@@ -153,18 +134,69 @@ function debugFunc() {
 #TODO: To be implemented in v0.9
 #This function should list all folders from $BINDLIST and check whether these are mounted or not and print them out
 function listFunc() {
-    exit 0
+	if [[ -f $BINDLIST ]]; then
+		while IFS='' read -r line || [[ -n "$line" ]]; do
+			src=`echo "$line" | awk '{print $2;}'`
+			if mountpoint -q "/data/media/0/$src"
+			then
+				echo "$line	MOUNTED"
+			else
+				echo "$line	NOT MOUNTED"
+			fi 
+		done < "$BINDLIST"
+		exit 0
+	else
+		echo "Bindlist does not exist"
+		exit 4
+	fi
+
 }
 
 #TODO: To be implemented in v0.9
 #This function should remount all folders which are in $BINDLIST (some sort of list parsing needed)
 function rebindFunc() {
+	if [[ -f $BINDLIST ]]; then
+		while IFS='' read -r line || [[ -n "$line" ]]; do
+			$dest=`echo "$line" | awk '{print $1;}'`
+			$src=`echo "$line" | awk '{print $2;}'`
+			
+			if ! mountpoint -q "/data/media/0/$src"
+    		then
+        		if ! mountpoint -q "/mnt/runtime/default/emulated/0/$src"
+        		then
+            		echo "Mounting $dest -> /data/media/0/$src..." >> $LOG
+            		mount -o bind "$dest" "/data/media/0/$src" 1>>$LOG 2>>$LOG # old style mounting
+            		# if ! mount -o bind "$dest" "/data/media/0/$src" 1>>$LOG 2>>$LOG
+            		# then
+                	# 	echo "Failed. Mounting $dest -> /mnt/runtime/default/emulated/0/$src..." >> $LOG
+                	# 	mount -o bind "$dest" "/mnt/runtime/default/emulated/0/$src" 1>>$LOG 2>>$LOG
+                	# 	mount -o bind "$dest" "/mnt/runtime/read/emulated/0/$src" 1>>$LOG 2>>$LOG
+                	# 	mount -o bind "$dest" "/mnt/runtime/write/emulated/0/$src" 1>>$LOG 2>>$LOG
+           			# fi
+            		echo "Done!" >> $LOG
+            	
+        		else
+            		echo "E: Folder already mounted."
+            		exit 5
+        		fi
+    		else
+        		echo "E: Folder already mounted."
+        		exit 5
+    		fi
+		done < "$BINDLIST"
+		exit 0
+	else
+		echo "Bindlist does not exist"
+		exit 4
+	fi
+
+
     exit 0
 }
 
 function helpFunc() {
 	cat << EOM
-Magisk FolderMount v0.8.6
+Magisk FolderMount v0.8.9-b2
 
 Internal SD card: $DATAPATH
 External SD card: $EXTSDPATH
