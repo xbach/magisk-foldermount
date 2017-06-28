@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# Magisk FolderMount v0.8.6
+# Magisk FolderMount v0.8.9-b7
 # (c) 2017 Codebucket
 # Easily mount internal SD card folders to external SD folders.
 #
@@ -11,9 +11,13 @@
 # Example: fmount -b "WhatsApp" ".foldermount/WhatsApp"
 # Use a dot at the begin to hide the folder from media scan ;)
 
+# System Variables
 MODDIR="/magisk/magisk-foldermount" # lol, this should be probably avoided, but idk a better solution
-BINDLIST="$MODDIR/foldermount.fstab"
 LOG="$MODDIR/mount.log"
+INTPATH="/storage/emulated/0/"
+#INTPATH="/data/media/0/"
+SETTINGSPATH="$INTPATH.fmount"
+BINDLIST="$SETTINGSPATH/foldermount.fstab"
 
 # Set up busybox applets for easier integration
 alias busybox=/data/magisk/busybox
@@ -25,8 +29,8 @@ for i in $(busybox --list); do
 done
 unset c
 
+
 # Check if /data has been mounted
-DATAPATH="/data/media/0"
 if ! mountpoint -q "/data"; then
     echo "E: Data partition has not been mounted or is unavailable, please try it again later or restart the device."
     exit 1
@@ -35,8 +39,7 @@ fi
 # Search for external SD card in /mnt/runtime/default...
 for var in `ls /mnt/runtime/default`; do
     if echo "$var" | grep -Eq '[0-9a-fA-F]{4}-[0-9a-fA-F]{4}'; then
-        EXTSDPATH=/mnt/media_rw/$var
-        break
+        EXTSDPATH=/mnt/media_rw/$var/
     fi
 done
 
@@ -47,6 +50,77 @@ if [ ! $EXTSDPATH ]; then
 fi
 
 ## METHOD FUNCTIONS
+# Mount
+function mountFunc() {
+	if [[ ! -d "$INTPATH$src" ]]; then
+		mkdir -p "$INTPATH$src"
+	fi
+	echo "Mounting $EXTSDPATH$dest -> $INTPATH$src..." >> $LOG
+	mount -o bind "$EXTSDPATH$dest" "$INTPATH$src" 1>>$LOG 2>>$LOG
+	mount -o bind "$EXTSDPATH$dest" "/mnt/runtime/default/emulated/0/$src" 1>>$LOG 2>>$LOG
+	mount -o bind "$EXTSDPATH$dest" "/mnt/runtime/read/emulated/0/$src" 1>>$LOG 2>>$LOG
+	mount -o bind "$EXTSDPATH$dest" "/mnt/runtime/write/emulated/0/$src" 1>>$LOG 2>>$LOG
+	
+	# if ! mount -o bind "$EXTSDPATH$dest" "$INTPATH$src" 1>>$LOG 2>>$LOG
+	# then
+	#	echo "Failed. Mounting $EXTSDPATH$dest -> /mnt/runtime/default/emulated/0/$src..." >> $LOG
+	#	mount -o bind "$EXTSDPATH$dest" "/mnt/runtime/default/emulated/0/$src" 1>>$LOG 2>>$LOG
+	#	mount -o bind "$EXTSDPATH$dest" "/mnt/runtime/read/emulated/0/$src" 1>>$LOG 2>>$LOG
+	#	mount -o bind "$EXTSDPATH$dest" "/mnt/runtime/write/emulated/0/$src" 1>>$LOG 2>>$LOG
+	#fi
+	echo "Done!" >> $LOG
+	}
+	
+# Unmount 
+function umountFunc() {
+	if mountpoint -q "$INTPATH$src"
+		then
+			echo "Unmounting $INTPATH$src..." >> $LOG
+			umount "$INTPATH$src" 1>>$LOG 2>>$LOG
+			umount "/mnt/runtime/default/emulated/0/$src" 1>>$LOG 2>>$LOG
+			umount "/mnt/runtime/read/emulated/0/$src" 1>>$LOG 2>>$LOG
+			umount "/mnt/runtime/write/emulated/0/$src" 1>>$LOG 2>>$LOG
+			echo "Done!" >> $LOG
+		else
+			echo "E: Error while unmounting folder, please check the log file for details."
+			exit 4
+	fi
+			
+	#if mountpoint -q "$INTPATH$src"
+	#	then
+	#		echo "Unmounting $INTPATH$src..." >> $LOG
+	#		if ! umount "$INTPATH$src" 1>>$LOG 2>>$LOG
+	#		then
+	#			echo "E: Error while unmounting folder, please check the log file for details."
+	#			exit 4
+	#		fi
+	#		echo "Done!" >> $LOG
+	#	else
+	#		if mountpoint -q "/mnt/runtime/default/emulated/0/$src"
+	#		then
+	#			echo "Unmounting /mnt/runtime/default/emulated/0/$src..." >> $LOG
+	#			umount "/mnt/runtime/default/emulated/0/$src" 1>>$LOG 2>>$LOG
+	#			umount "/mnt/runtime/read/emulated/0/$src" 1>>$LOG 2>>$LOG
+	#			umount "/mnt/runtime/write/emulated/0/$src" 1>>$LOG 2>>$LOG
+	#		else
+	#			echo "E: Folder already unmounted."
+	#			exit 5
+	#		fi
+	#	echo "Done!" >> $LOG
+	#fi
+	}
+
+# Add to Bindlist	
+function addList() {
+	if [[ ! -f $BINDLIST ]];
+	then
+        touch $BINDLIST
+    fi
+    echo -e "\n$dest	$src" >> $BINDLIST
+    # TODO: implement check for duplicates, don't add if duplicate
+    }
+
+# Bind function
 function bindFunc() {
     if [[ $# = 1 ]]; then
         cat << EOM
@@ -55,32 +129,18 @@ Usage: fmount -b [source] (destination)
 EOM
         exit 3
     fi
-
     src=${2}
     if [[ $# < 3 ]]; then
-        dest=$EXTSDPATH/${2}
+        dest=${2}
     else
-        dest=$EXTSDPATH/${3}
-    fi
-
-    if ! mountpoint -q "/data/media/0/$src"
+        dest=${3}
+    fi	
+    if ! mountpoint -q "$INTPATH$src"
     then
         if ! mountpoint -q "/mnt/runtime/default/emulated/0/$src"
         then
-            echo "Mounting $dest -> /data/media/0/$src..." >> $LOG
-            if ! mount -o bind "$dest" "/data/media/0/$src" 1>>$LOG 2>>$LOG
-            then
-                echo "Failed. Mounting $dest -> /mnt/runtime/default/emulated/0/$src..." >> $LOG
-                mount -o bind "$dest" "/mnt/runtime/default/emulated/0/$src" 1>>$LOG 2>>$LOG
-                mount -o bind "$dest" "/mnt/runtime/read/emulated/0/$src" 1>>$LOG 2>>$LOG
-                mount -o bind "$dest" "/mnt/runtime/write/emulated/0/$src" 1>>$LOG 2>>$LOG
-            fi
-            echo "Done!" >> $LOG
-            if [[ ! -f $BINDLIST ]];
-            then
-            	touch $BINDLIST
-            fi
-            echo "$dest	$src" >> $BINDLIST
+            mountFunc
+            addList
         else
             echo "E: Folder already mounted."
             exit 5
@@ -91,57 +151,44 @@ EOM
     fi
 }
 
+# Unbind function
 function unbindFunc() {
     if [[ $# = 1 ]]; then
         cat << EOM
 E: Invalid syntax, no folder to unbind defined.
+Use fmount -l to view the mount list.
 Usage: fmount -u [source]
 EOM
         exit 3
     fi
-
     src=${2}
-    if mountpoint -q "/data/media/0/$src"
-    then
-        echo "Unmounting /data/media/0/$src..." >> $LOG
-        if ! umount "/data/media/0/$src" 1>>$LOG 2>>$LOG
-        then
-            echo "E: Error while unmounting folder, please check the log file for details."
-            exit 4
-        fi
-        echo "Done!" >> $LOG
-    else
-        if mountpoint -q "/mnt/runtime/default/emulated/0/$src"
-        then
-            echo "Unmounting /mnt/runtime/default/emulated/0/$src..." >> $LOG
-            umount "/mnt/runtime/default/emulated/0/$src" 1>>$LOG 2>>$LOG
-            umount "/mnt/runtime/read/emulated/0/$src" 1>>$LOG 2>>$LOG
-            umount "/mnt/runtime/write/emulated/0/$src" 1>>$LOG 2>>$LOG
-        else
-            echo "E: Folder already unmounted."
-            exit 5
-        fi
-        echo "Done!" >> $LOG
-    fi
+    umountFunc
 }
 
+# Debug function
 function debugFunc() {
     tail $LOG
     exit 0
 }
 
-#TODO: To be implemented in v0.9
-#This function should list all folders from $BINDLIST and check whether these are mounted or not and print them out
+# List function
 function listFunc() {
+	cat << EOM
+Internal SD card: $INTPATH
+External SD card: $EXTSDPATH
+
+Source				Destination Path					Source Path		State
+------------------------------------------------------------------------------------
+EOM
 	if [[ -f $BINDLIST ]]; then
 		while IFS='' read -r line || [[ -n "$line" ]]; do
 			dest=`echo "$line" | awk '{print $1;}'`
 			src=`echo "$line" | awk '{print $2;}'`
-			if mountpoint -q "/data/media/0/$src"
+			if mountpoint -q "$INTPATH$src"
 			then
-				echo "$dest $DATAPATH/$src	MOUNTED"
+				echo "$src			$EXTSDPATH$dest	 		$INTPATH$src		MOUNTED"
 			else
-				echo "$dest $DATAPATH/$src	NOT MOUNTED"
+				echo "$src			$EXTSDPATH$dest	 		$INTPATH$src		UNMOUNTED"
 			fi 
 		done < "$BINDLIST"
 		exit 0
@@ -149,39 +196,26 @@ function listFunc() {
 		echo "Bindlist does not exist"
 		exit 4
 	fi
-
 }
 
-#TODO: To be implemented in v0.9
-#This function should remount all folders which are in $BINDLIST (some sort of list parsing needed)
+# Rebind function
 function rebindFunc() {
 	if [[ -f $BINDLIST ]]; then
 		while IFS='' read -r line || [[ -n "$line" ]]; do
 			dest=`echo "$line" | awk '{print $1;}'`
 			src=`echo "$line" | awk '{print $2;}'`
 			
-			if ! mountpoint -q "/data/media/0/$src"
+			if ! mountpoint -q "$INTPATH$src"
     		then
         		if ! mountpoint -q "/mnt/runtime/default/emulated/0/$src"
         		then
-            		echo "Mounting $dest -> /data/media/0/$src..." >> $LOG
-            		
-            		if ! mount -o bind "$dest" "/data/media/0/$src" 1>>$LOG 2>>$LOG
-            		then
-                		echo "Failed. Mounting $dest -> /mnt/runtime/default/emulated/0/$src..." >> $LOG
-                		mount -o bind "$dest" "/mnt/runtime/default/emulated/0/$src" 1>>$LOG 2>>$LOG
-                		mount -o bind "$dest" "/mnt/runtime/read/emulated/0/$src" 1>>$LOG 2>>$LOG
-                		mount -o bind "$dest" "/mnt/runtime/write/emulated/0/$src" 1>>$LOG 2>>$LOG
-           			fi
-            		echo "Done!" >> $LOG
+            		mountFunc
             	
         		else
             		echo "E: Folder already mounted."
-            		exit 5
         		fi
     		else
         		echo "E: Folder already mounted."
-        		exit 5
     		fi
 		done < "$BINDLIST"
 		exit 0
@@ -189,22 +223,65 @@ function rebindFunc() {
 		echo "Bindlist does not exist"
 		exit 4
 	fi
-
-
-    exit 0
 }
 
+# Move files and bind function
+function moveFunc() {
+	
+	if [[ $# = 1 ]]; then
+        cat << EOM
+E: Invalid syntax, no source folder to bind defined.
+Usage: fmount -m [source] (destination)
+EOM
+
+echo "invalid syntax" >> $LOG
+exit 3
+    fi
+    
+    src=${2}
+    if [[ $# < 3 ]]; then
+        dest=${2}
+    else
+        dest=${3}
+    fi
+    
+    echo "Moving files to sdcard: $EXTSDPATH$dest" >> $LOG
+    if [[ ! -d "$EXTSDPATH$dest" ]]; then
+		mkdir -p "$EXTSDPATH$dest"
+	fi
+    mv -f "$INTPATH$src/*" "$EXTSDPATH$dest"
+    echo "Done!" >> $LOG
+    	
+    if ! mountpoint -q "$INTPATH$src"
+    then
+        if ! mountpoint -q "/mnt/runtime/default/emulated/0/$src"
+        then
+            mountFunc
+            addList
+        else
+            echo "E: Folder already mounted."
+            exit 5
+        fi
+    else
+        echo "E: Folder already mounted."
+        exit 5
+    fi
+
+}
+
+# Help function
 function helpFunc() {
 	cat << EOM
-Magisk FolderMount v0.8.9-b4
+Magisk FolderMount v0.8.9-b7
 
-Internal SD card: $DATAPATH
+Internal SD card: $INTPATH
 External SD card: $EXTSDPATH
 
 Usage: fmount [-budlr] [source] (destination)
 EOM
     exit 0
 }
+
 ## END METHOD FUNCTIONS
 
 # Show help if no arguments passed
@@ -219,6 +296,7 @@ case "${1}" in
     "-d" | "debug"      ) debugFunc;;
     "-l" | "list"       ) listFunc;;
     "-r" | "rebind"     ) rebindFunc "$@";;
+    "-m" | "move"		) moveFunc "$@";;
     *                   ) helpFunc;;
 esac
 
