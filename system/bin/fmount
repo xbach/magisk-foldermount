@@ -1,6 +1,7 @@
 #!/system/bin/sh
 # Magisk FolderMount v0.8.9-b7
 # (c) 2017 Codebucket
+# modded by xbach
 # Easily mount internal SD card folders to external SD folders.
 #
 # Inspired by FolderMount created by madmack, unfortunately his app does not work with MagiskSU
@@ -20,11 +21,11 @@ SETTINGSPATH="$INTPATH.fmount"
 BINDLIST="$SETTINGSPATH/foldermount.fstab"
 
 # Set up busybox applets for easier integration
-alias busybox=/data/magisk/busybox
+alias busybox=/system/bin/busybox
 c=0
 for i in $(busybox --list); do
     if [ "$c" -gt 5 ] || [ "$i" != 'echo' ]; then
-        alias $i="/data/magisk/busybox $i"
+        alias $i="/system/bin/busybox $i"
     fi
 done
 unset c
@@ -177,7 +178,7 @@ function listFunc() {
 Internal SD card: $INTPATH
 External SD card: $EXTSDPATH
 
-Source				Destination Path					Source Path		State
+Source				Destination Path				Source Path		State
 ------------------------------------------------------------------------------------
 EOM
 	if [[ -f $BINDLIST ]]; then
@@ -186,9 +187,9 @@ EOM
 			src=`echo "$line" | awk '{print $2;}'`
 			if mountpoint -q "$INTPATH$src"
 			then
-				echo "$src			$EXTSDPATH$dest	 		$INTPATH$src		MOUNTED"
+				echo "$src	$EXTSDPATH$dest	 $INTPATH$src	MOUNTED"
 			else
-				echo "$src			$EXTSDPATH$dest	 		$INTPATH$src		UNMOUNTED"
+				echo "$src	$EXTSDPATH$dest	 $INTPATH$src	UNMOUNTED"
 			fi 
 		done < "$BINDLIST"
 		exit 0
